@@ -1,6 +1,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
+#define MAX_NUM 10
+#define MAX_SYMBOL 20
+
 #define TEXT_BASE 0x00400000
 #define DATA_BASE 0x10000000
 
@@ -9,9 +13,23 @@ typedef struct {
 	char type;
 	int opcode;
 	int funct;
-} MipsOp;
+} Operation;
 
-const MipsOp OP_TABLE[] = {
+typedef struct {
+	const* Operation op;
+	int rs, rt, rd, shamt;
+	int immediate;
+} Instruction;
+
+typedef struct {
+	char symbol_name[10];
+	unsigned address;
+}Symbol;
+
+Symbol symbol_table[MAX_SYMBOL];
+int symbol_num = 0;
+
+const Operation OP_TABLE[] = {
 	{"add",    'R',  0x00,   0x20},
 	{"sub",    'R',  0x00,   0x22},
 	{"and",    'R',  0x00,   0x24},
@@ -37,6 +55,7 @@ const MipsOp OP_TABLE[] = {
 static unsigned encode_r(unsigned rs, unsigned rt, unsigned rd, unsigned shamt, unsigned funct);
 static unsigned encode_i(unsigned op, unsigned rs, unsigned rt, unsigned imm);
 static unsigned encode_j(unsigned op, unsigned target_addr);
+static unsigned string_to_Instruction(char* s, )
 static char* trim(char* s);
 
 
@@ -50,15 +69,6 @@ int main(int argc, char* argv[]) {
 	}
 	else {
 
-		// To help you handle the file IO, the deafult code is provided.
-		// If we use freopen, we don't need to use fscanf, fprint,..etc. 
-		// You can just use scanf or printf function 
-		// ** You don't need to modify this part **
-		// If you are not famailiar with freopen,  you can see the following reference
-		// http://www.cplusplus.com/reference/cstdio/freopen/
-
-		//For input file read (sample_input/example*.s)
-
 		char* file = (char*)malloc(strlen(argv[1]) + 3);
 		strncpy(file, argv[1], strlen(argv[1]));
 
@@ -67,17 +77,8 @@ int main(int argc, char* argv[]) {
 			exit(1);
 		}
 
-		//From now on, if you want to read string from input file, you can just use scanf function.
-
-
-		// For output file write 
-		// You can see your code's output in the sample_input/example#.o 
-		// So you can check what is the difference between your output and the answer directly if you see that file
-		// make test command will compare your output with the answer
 		file[strlen(file) - 1] = 'o';
 		freopen(file, "w", stdout);
-
-		//If you use printf from now on, the result will be written to the output file.
 
 		while (true) {
 
@@ -107,7 +108,79 @@ static unsigned encode_i(unsigned op, unsigned rs, unsigned rt, unsigned imm) {
 }
 
 static char* trim(char* s) {
-
+	char* target = s;
+	while (isspace(*target)) {
+		target++;
+	}
+	char* rear = s + strlen(s) - 1;
+	while (rear > target && isspace(*rear)) {
+		rear--;
+	}
+	*(rear + 1) = '\0';
+	return target;
 }
 
-static char*
+static unsigned string_to_Instruction(char* s) {
+	Instruction I = NULL;
+	char* operation = strtok(s, " ");
+	for (int i = 0; i < sizeof(OP_TABLE) / sizeof(Operation); i++) {
+		if (strcmp(OP_TABLE[i].name, operation)) {
+			I.op = OP_TABLE[i];
+			break;
+		}
+	}
+
+	if (I) {
+		if (I.op.type == 'R') {
+			if (strcmp(I.op.name, "sll") || strcmp(I.op.name, "srl")) {
+				char* rd_ptr = strtok(NULL, " ");
+				char* rt_ptr = strtok(NULL, " ");
+				char* shamt_ptr = strtok(NULL, " ");
+				I.rd = atoi(rd_ptr + 1);
+				I.rt = atoi(rt_ptr + 1);
+				I.shamt = atoi(shamt_ptr);
+				return encode_r(0, I.rt, I.rd, I.shamt, I.op.funct);
+			}
+			else if (strcmp(I.op.name, "jr")) {
+				char* rs_ptr = strtok(NULL, " ");
+				I.rs = atoi(rs_ptr + 1);
+				return encode_r(I.rs, 0, 0, 0, I.op.funct);
+			}
+			else {
+				char* rd_ptr = strtok(NULL, " ");
+				char* rs_ptr = strtok(NULL, " ");
+				char* rt_ptr = strtok(NULL, " ");
+				I.rd = atoi(rd_ptr + 1);
+				I.rs = atoi(rs_ptr + 1);
+				I.rt = atoi(rt_ptr + 1);
+				return encode_r(I.rs, I.rt, I.rd, 0, I.op.funct);
+			}
+		}
+		else if (I.op.type == 'I') {
+			if (strcmp(I.op.name, "lw") || strcmp(I.op.name, "sw")) {
+
+			}
+			else if (strcmp(I.op.name, "beq") || strcmp(I.op.name, "bne")) {
+
+			}
+			else if (strcmp(I.op.name, "la")) {
+
+			}
+			else {
+				char* rt_ptr = strtok(NULL, " ");
+				char* rs_ptr = strtok(NULL, " ");
+				char* im_ptr = strtok(NULL, " ");
+				I.rt = atoi(rt_ptr + 1);
+				I.rs = atoi(rs_ptr + 1);
+				I.immediate = atoi(im_ptr);
+				return encode_i(I.op.opcode, I.rs, I.rt, I.immediate);
+			}
+
+		}
+		else {
+
+		}
+	}
+
+
+}
