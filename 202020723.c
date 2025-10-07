@@ -4,9 +4,10 @@
 #include <ctype.h>
 #define MAX_NUM 10
 #define MAX_SYMBOL 20
+#define MAX_LINE 50
 
-#define TEXT_BASE 0x00400000
-#define DATA_BASE 0x10000000
+#define TEXT_BASE 0x00400000u
+#define DATA_BASE 0x10000000u
 
 typedef struct {
 	const char* name;
@@ -28,6 +29,11 @@ typedef struct {
 
 Symbol symbol_table[MAX_SYMBOL];
 int symbol_num = 0;
+
+unsigned data_address_ptr = DATA_BASE;
+unsigned text_address_ptr = TEXT_BASE;
+bool isData = false;
+
 
 const Operation OP_TABLE[] = {
 	{"add",    'R',  0x00,   0x20},
@@ -81,14 +87,32 @@ int main(int argc, char* argv[]) {
 		freopen(file, "w", stdout);
 
 		while (true) {
+			char line[MAX_LINE];
 
+			if (fgets(line, MAX_LINE, stdin) != NULL) {
+				line = trim(line);
+				char* comment_ptr = strchr(line, '#');
+				if (comment_ptr != NULL) {
+					*comment_ptr = '\0';
+				} //주석 제거
+
+
+				if (strcmp(line, ".data")) {
+					isData = true;
+					continue;
+				}
+				else if (strcmp(line, ".text")) {
+					isData = false;
+					continue;
+				}
+
+				if (isData) {
+
+				}
+
+			}
 		}
 
-		rewind(stdin);
-
-		while (true) {
-
-		}
 
 	}
 
@@ -100,7 +124,7 @@ static unsigned encode_r(unsigned rs, unsigned rt, unsigned rd, unsigned shamt, 
 }
 
 static unsigned encode_j(unsigned op, unsigned target_addr) {
-	return (op << 26) | ((target_addr << 2) & 0x03FFFFFF);
+	return (op << 26) | ((target_addr << 2) & 0x03FFFFFFu);
 }
 
 static unsigned encode_i(unsigned op, unsigned rs, unsigned rt, unsigned imm) {
@@ -122,7 +146,7 @@ static char* trim(char* s) {
 
 static unsigned string_to_Instruction(char* s) {
 	Instruction I = NULL;
-	char* operation = strtok(s, " ");
+	char* operation = strtok(s, " ,\t\n");
 	for (int i = 0; i < sizeof(OP_TABLE) / sizeof(Operation); i++) {
 		if (strcmp(OP_TABLE[i].name, operation)) {
 			I.op = OP_TABLE[i];
@@ -133,23 +157,23 @@ static unsigned string_to_Instruction(char* s) {
 	if (I) {
 		if (I.op.type == 'R') {
 			if (strcmp(I.op.name, "sll") || strcmp(I.op.name, "srl")) {
-				char* rd_ptr = strtok(NULL, " ");
-				char* rt_ptr = strtok(NULL, " ");
-				char* shamt_ptr = strtok(NULL, " ");
+				char* rd_ptr = strtok(NULL, " ,\t\n");
+				char* rt_ptr = strtok(NULL, " ,\t\n");
+				char* shamt_ptr = strtok(NULL, " ,\t\n");
 				I.rd = atoi(rd_ptr + 1);
 				I.rt = atoi(rt_ptr + 1);
 				I.shamt = atoi(shamt_ptr);
 				return encode_r(0, I.rt, I.rd, I.shamt, I.op.funct);
 			}
 			else if (strcmp(I.op.name, "jr")) {
-				char* rs_ptr = strtok(NULL, " ");
+				char* rs_ptr = strtok(NULL, " ,\t\n");
 				I.rs = atoi(rs_ptr + 1);
 				return encode_r(I.rs, 0, 0, 0, I.op.funct);
 			}
 			else {
-				char* rd_ptr = strtok(NULL, " ");
-				char* rs_ptr = strtok(NULL, " ");
-				char* rt_ptr = strtok(NULL, " ");
+				char* rd_ptr = strtok(NULL, " ,\t\n");
+				char* rs_ptr = strtok(NULL, " ,\t\n");
+				char* rt_ptr = strtok(NULL, " ,\t\n");
 				I.rd = atoi(rd_ptr + 1);
 				I.rs = atoi(rs_ptr + 1);
 				I.rt = atoi(rt_ptr + 1);
@@ -167,9 +191,9 @@ static unsigned string_to_Instruction(char* s) {
 
 			}
 			else {
-				char* rt_ptr = strtok(NULL, " ");
-				char* rs_ptr = strtok(NULL, " ");
-				char* im_ptr = strtok(NULL, " ");
+				char* rt_ptr = strtok(NULL, " ,\t\n");
+				char* rs_ptr = strtok(NULL, " ,\t\n");
+				char* im_ptr = strtok(NULL, " ,\t\n");
 				I.rt = atoi(rt_ptr + 1);
 				I.rs = atoi(rs_ptr + 1);
 				I.immediate = atoi(im_ptr);
