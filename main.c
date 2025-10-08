@@ -63,9 +63,13 @@ const Operation OP_TABLE[] = {
 static unsigned encode_r(unsigned rs, unsigned rt, unsigned rd, unsigned shamt, unsigned funct);
 static unsigned encode_i(unsigned op, unsigned rs, unsigned rt, unsigned imm);
 static unsigned encode_j(unsigned op, unsigned target_addr);
-static unsigned string_to_Instruction(char* line, unsigned int current_address);
+static unsigned string_to_Instruction(char* line, unsigned current_address);
 void num_to_binary(unsigned num, char* buffer);
 static char* trim(char* s);
+bool end_token(char* s);
+void add_symbol(char* label_token, bool data);
+Symbol search_symbol(char* symbolname);
+const Operation* find_op(char* mnemonic);
 
 int main(int argc, char* argv[]) {
 
@@ -91,13 +95,10 @@ int main(int argc, char* argv[]) {
 		unsigned data_section[MAX_LINE];
 		int text_count = 0;
 		int data_count = 0;
-
-		while (true) {
-			char before_line[MAX_LINE] = NULL;
-
-			fgets(before_line, MAX_LINE, stdin);
-			char* line;
-			line = trim(line);
+		char before_line[MAX_LINE];
+		while (fgets(before_line, MAX_LINE, stdin)) {
+			
+			char* line = trim(before_line);
 			if (!(*line)) continue;
 
 			if (!strcmp(line, ".data")) {
@@ -128,7 +129,7 @@ int main(int argc, char* argv[]) {
 				data_address_ptr += 4;
 			}
 			else if (!strcmp(main_token, "la")) {
-				text_address_ptr += 4;
+				text_address_ptr += 8;
 			}
 			else {
 				text_address_ptr += 4;
@@ -136,8 +137,6 @@ int main(int argc, char* argv[]) {
 		}
 		rewind(stdin);
 		text_address_ptr = TEXT_BASE;
-
-		char *before_line;
 
 		while (fgets(before_line, MAX_LINE, stdin) != NULL) { 
 			char* line = trim(before_line);
@@ -175,17 +174,17 @@ int main(int argc, char* argv[]) {
 					char* label_ptr = strtok(NULL, " \t,");
 					
 					Symbol sym = search_symbol(label_ptr);
-					unsigned int addr = sym.address;
+					unsigned addr = sym.address;
 
-					unsigned int upper = addr >> 16;
-					unsigned int lower = addr & 0xFFFF;
+					unsigned upper = addr >> 16;
+					unsigned lower = addr & 0xFFFFu;
 
-					Operation lui_op = find_op("lui");
-					text_section[text_count++] = encode_i(lui_op.opcode, 0, 1, upper);
+					Operation* lui_op = find_op("lui");
+					text_section[text_count++] = encode_i(lui_op->opcode, 0, 1, upper);
 					
 					if (lower != 0) {
-						Operation ori_op = find_op("ori");
-						text_section[text_count++] = encode_i(ori_op.opcode, 1, atoi(rt_ptr), lower);
+						Operation* ori_op = find_op("ori");
+						text_section[text_count++] = encode_i(ori_op->opcode, 1, atoi(rt_ptr), lower);
 					}
 				}
 				else {
@@ -201,7 +200,7 @@ int main(int argc, char* argv[]) {
 		num_to_binary(text_size, binary_buffer);
 		strcat(final_output, binary_buffer);
 
-		unsigned int data_size = data_count * 4;
+		unsigned data_size = data_count * 4;
 		num_to_binary(data_size, binary_buffer);
 		strcat(final_output, binary_buffer);
 
@@ -236,7 +235,7 @@ static unsigned encode_i(unsigned op, unsigned rs, unsigned rt, unsigned imm) {
 
 void num_to_binary(unsigned num, char* buffer) {
 	for (int i = 31; i >= 0; i--) {
-		unsigned int mask = 1u << i;
+		unsigned mask = 1u << i;
 		if (num & mask) {
 			*buffer = '1';
 		}
@@ -302,23 +301,23 @@ static char* trim(char* s) {
 	return target;
 }
 
-Operation find_op(char* mnemonic){
-	for(int i = 0; i < sizeof(OP_TABLE) / sizeof(Operation); i++){
-		if(!strcmp(mnemonic, OP_TABLE[i].name)){
-			return OP_TABLE[i];
-		}
-	}
+const Operation* find_op(char* mnemonic) {
+    for(int i = 0; i < sizeof(OP_TABLE) / sizeof(Operation); i++){
+        if(strcmp(mnemonic, OP_TABLE[i].name) == 0){
+            return &OP_TABLE[i];
+        }
+    }
+    return NULL;
 }
 
-
-static unsigned string_to_Instruction(char* line, unsigned int current_address) {
+static unsigned string_to_Instruction(char* line, unsigned current_address) {
 	Instruction I;
 	char* delimiters = " ,\t\n";
     
 	char* mnemonic = strtok(line, delimiters);
-	const Operation op_info = find_op(mnemonic);
+	const Operation *op_info = find_op(mnemonic);
 
-	I.op = &op_info;
+	I.op = op_info;
 
 	if (I.op->type == 'R') {
 
@@ -366,7 +365,7 @@ static unsigned string_to_Instruction(char* line, unsigned int current_address) 
 			char* rt_ptr = strtok(NULL, delimiters);
 			char* label_ptr = strtok(NULL, delimiters);
 			
-			unsigned int target_addr = find_symbol_address(label_ptr);
+			unsigned target_addr = find_symbol_address(label_ptr);
 			int offset = (target_addr - (current_address + 4)) / 4;
 
 			I.rs = atoi(rs_ptr + 1);
@@ -385,7 +384,7 @@ static unsigned string_to_Instruction(char* line, unsigned int current_address) 
 	} 
 	else { 
 		char* label_ptr = strtok(NULL, delimiters);
-		unsigned int target_addr = find_symbol_address(label_ptr);
+		unsigned target_addr = find_symbol_address(label_ptr);
 		return encode_j(I.op->opcode, target_addr);
 	}
 }
