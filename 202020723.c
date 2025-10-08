@@ -87,6 +87,11 @@ int main(int argc, char* argv[]) {
 		file[strlen(file) - 1] = 'o';
 		freopen(file, "w", stdout);
 
+		unsigned text_section[MAX_LINE];
+		unsigned data_section[MAX_LINE];
+		int text_count = 0;
+		int data_count = 0;
+
 		while (true) {
 			char before_line[MAX_LINE] = NULL;
 
@@ -131,60 +136,89 @@ int main(int argc, char* argv[]) {
 		}
 		rewind(stdin);
 		text_address_ptr = TEXT_BASE;
-		char* answer[1024];
-		while (true) {
-			char before_line[MAX_LINE];
-			fgets(before_line, MAX_LINE, stdin);
+
+		char *before_line;
+
+		while (fgets(before_line, MAX_LINE, stdin) != NULL) { 
 			char* line = trim(before_line);
 			if (!(*line)) continue;
 
-			if (!strcmp(line, ".data")) {
+			if (strcmp(line, ".data") == 0) {
 				isData = true;
 				continue;
-			}
-			else if (!strcmp(line, ".text")) {
+			} else if (strcmp(line, ".text") == 0) {
 				isData = false;
 				continue;
 			}
 
-			char* token1 = strtok(line, " ,");
-			char* token2 = strtok(NULL, " ,$");
-			char* buffer[33];
+			char* colon = strchr(line, ':');
+			if (colon != NULL) {
+				line = trim(colon + 1); 
+				if (!(*line)) continue; 
+			}
+			
 			if (isData) {
-				if (!strcmp(token1, ".word")) {
-					num_to_binary(token2, buffer);
-					strcat(answer, buffer);
-				}
-				else {
-					char* token3 = strtok(NULL, " ,$");
-					num_to_binary(token3, buffer);
-					strcat(answer, buffer);
+				char* directive = strtok(line, " \t,");
+				if (directive != NULL && (strcmp(directive, ".word") == 0)) {
+					char* value_str = strtok(NULL, " \t,");
+					data_section[data_count++] = strtol(value_str, NULL, 0);
 				}
 			}
 			else {
-				if(!strcmp(token1, "la")){
-					char* token3 = strtok(NULL, " ,$");
-					Symbol sym = search_symbol(token3);
-					unsigned upper_addr = sym.address << 16;
-					unsigned lower_addr = sym.address & 0xFFFFu;
+				char line_copy[MAX_LINE];
+				strcpy(line_copy, line);
 
-					unsigned lui_code = encode_i(find_op("lui").opcode, 0, 1, upper_addr);
-					num_to_binary(lui_code, buffer);
-					strcat(answer, buffer);
-					text_address_ptr += 4;
-					if(lower_addr){
-						unsigned ori_code = encode_i(find_op("ori").opcode, 1, atoi(token2), lower_addr);
-						num_to_binary(lui_code, buffer);
-						strcat(answer, buffer);
-						text_address_ptr += 4;
+				char* mnemonic = strtok(line_copy, " \t,");
+				
+				if (strcmp(mnemonic, "la") == 0) {
+					char* rt_ptr = strtok(NULL, " \t,$");
+					char* label_ptr = strtok(NULL, " \t,");
+					
+					Symbol sym = search_symbol(label_ptr);
+					unsigned int addr = sym.address;
+
+					unsigned int upper = addr >> 16;
+					unsigned int lower = addr & 0xFFFF;
+
+					Operation lui_op = find_op("lui");
+					text_section[text_count++] = encode_i(lui_op.opcode, 0, 1, upper);
+					
+					if (lower != 0) {
+						Operation ori_op = find_op("ori");
+						text_section[text_count++] = encode_i(ori_op.opcode, 1, atoi(rt_ptr), lower);
 					}
 				}
-				else if()
+				else {
+					text_section[text_count++] = string_to_Instruction(line, text_address_ptr);
+				}
 			}
 		}
+
+		char final_output[4096] = "";
+		char binary_buffer[33];
+
+		unsigned text_size = text_count * 4;
+		num_to_binary(text_size, binary_buffer);
+		strcat(final_output, binary_buffer);
+
+		unsigned int data_size = data_count * 4;
+		num_to_binary(data_size, binary_buffer);
+		strcat(final_output, binary_buffer);
+
+		for (int i = 0; i < text_count; i++) {
+			num_to_binary(text_section[i], binary_buffer);
+			strcat(final_output, binary_buffer);
+		}
+
+
+		for (int i = 0; i < data_count; i++) {
+			num_to_binary(data_section[i], binary_buffer);
+			strcat(final_output, binary_buffer);
+		}
+
+
+		printf("%s", final_output);
 	}
-
-
 	return 0;
 }
 
