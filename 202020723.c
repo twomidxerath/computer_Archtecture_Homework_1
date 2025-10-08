@@ -2,6 +2,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <stdbool.h>
+
 #define MAX_NUM 10
 #define MAX_SYMBOL 20
 #define MAX_LINE 50
@@ -17,7 +19,7 @@ typedef struct {
 } Operation;
 
 typedef struct {
-	const* Operation op;
+	const Operation *op;
 	int rs, rt, rd, shamt;
 	int immediate;
 } Instruction;
@@ -61,7 +63,7 @@ const Operation OP_TABLE[] = {
 static unsigned encode_r(unsigned rs, unsigned rt, unsigned rd, unsigned shamt, unsigned funct);
 static unsigned encode_i(unsigned op, unsigned rs, unsigned rt, unsigned imm);
 static unsigned encode_j(unsigned op, unsigned target_addr);
-static unsigned string_to_Instruction(char* s);
+static unsigned string_to_Instruction(char* line, unsigned int current_address);
 void num_to_binary(unsigned num, char* buffer);
 static char* trim(char* s);
 
@@ -86,36 +88,38 @@ int main(int argc, char* argv[]) {
 		freopen(file, "w", stdout);
 
 		while (true) {
-			char line[MAX_LINE];
+			char before_line[MAX_LINE] = NULL;
 
-			fgets(line, MAX_LINE, stdin);
+			fgets(before_line, MAX_LINE, stdin);
+			char* line;
 			line = trim(line);
 			if (!(*line)) continue;
 
-			if (strcmp(line, ".data")) {
+			if (!strcmp(line, ".data")) {
 				isData = true;
 				continue;
 			}
-			else if (strcmp(line, ".text")) {
+			else if (!strcmp(line, ".text")) {
 				isData = false;
 				continue;
 			}
 			char* token1 = strtok(line, " ,");
 			char* token2 = strtok(line, " ,");
+			char* main_token;
 
 			if (end_token(token1)) {
 				add_symbol(token1, isData);
-				char* main_token = token2;
+				main_token = token2;
 			}
 			else {
-				char* main_token = token2;
+				main_token = token2;
 			}
 
 			if (main_token == NULL) {
 				continue;
 			}
 
-			if (!strcmp(main_token, ".word") == 0) {
+			if (!strcmp(main_token, ".word")) {
 				data_address_ptr += 4;
 			}
 			else if (!strcmp(main_token, "la")) {
@@ -124,49 +128,61 @@ int main(int argc, char* argv[]) {
 			else {
 				text_address_ptr += 4;
 			}
-
 		}
-	}
+		rewind(stdin);
+		text_address_ptr = TEXT_BASE;
+		char* answer[1024];
+		while (true) {
+			char before_line[MAX_LINE];
+			fgets(before_line, MAX_LINE, stdin);
+			char* line = trim(before_line);
+			if (!(*line)) continue;
 
-	rewind(stdin);
-	text_address_ptr = TEXT_BASE;
-	char* answer[1024];
-	while (true) {
-		char* line[MAX_LINE];
-		fgets(line, MAX_LINE, stdin);
-		line = trim(line);
-		if (!(*line)) continue;
+			if (!strcmp(line, ".data")) {
+				isData = true;
+				continue;
+			}
+			else if (!strcmp(line, ".text")) {
+				isData = false;
+				continue;
+			}
 
-		if (strcmp(line, ".data")) {
-			isData = true;
-			continue;
-		}
-		else if (strcmp(line, ".text")) {
-			isData = false;
-			continue;
-		}
-
-		char* token1 = strtok(line, " ,");
-		char* token2 = strtok(NULL, " ,");
-		char* buffer[33];
-		if (isData) {
-			if (strcmp(token1, ".word") == 0) {
-				num_to_binary(token2, buffer);
-				strcat(answer, buffer);
+			char* token1 = strtok(line, " ,");
+			char* token2 = strtok(NULL, " ,$");
+			char* buffer[33];
+			if (isData) {
+				if (!strcmp(token1, ".word")) {
+					num_to_binary(token2, buffer);
+					strcat(answer, buffer);
+				}
+				else {
+					char* token3 = strtok(NULL, " ,$");
+					num_to_binary(token3, buffer);
+					strcat(answer, buffer);
+				}
 			}
 			else {
-				char* token3 = strtok(NULL, " ,");
-				num_to_binary(token3, buffer);
-				strcat(answer, buffer);
+				if(!strcmp(token1, "la")){
+					char* token3 = strtok(NULL, " ,$");
+					Symbol sym = search_symbol(token3);
+					unsigned upper_addr = sym.address << 16;
+					unsigned lower_addr = sym.address & 0xFFFFu;
+
+					unsigned lui_code = encode_i(find_op("lui").opcode, 0, 1, upper_addr);
+					num_to_binary(lui_code, buffer);
+					strcat(answer, buffer);
+					text_address_ptr += 4;
+					if(lower_addr){
+						unsigned ori_code = encode_i(find_op("ori").opcode, 1, atoi(token2), lower_addr);
+						num_to_binary(lui_code, buffer);
+						strcat(answer, buffer);
+						text_address_ptr += 4;
+					}
+				}
+				else if()
 			}
 		}
-		else {
-			if ()
-		}
-
-
 	}
-
 
 
 	return 0;
@@ -209,18 +225,33 @@ bool end_token(char* s) {
 	return false;
 }
 
-void add_symbol(char* s, bool data) {
-	char* end = s;
-	while (*end) {
-		end++;
-	}
-	end--;
-	*end = NULL;
-	if (data) {
-		symbol_table[symbol_count++] = { s, data_address_ptr };
-	}
-	else {
-		symbol_table[symbol_count++] = { s, text_address_ptr };
+void add_symbol(char* label_token, bool data) {
+
+    char* colon = strchr(label_token, ':');
+    if (colon != NULL) {
+        *colon = '\0'; 
+
+        strcpy(symbol_table[symbol_count].symbol_name, label_token);
+
+        *colon = ':'; 
+    } else {
+        strcpy(symbol_table[symbol_count].symbol_name, label_token);
+    }
+    
+    if (data) {
+        symbol_table[symbol_count].address = data_address_ptr;
+    } else {
+        symbol_table[symbol_count].address = text_address_ptr;
+    }
+
+    symbol_count++;
+}
+
+Symbol search_symbol(char* symbolname){
+	for(int i = 0; i <= symbol_count; i++){
+		if(!strcmp(symbolname, symbol_table[i].symbol_name)){
+			return symbol_table[i];
+		}
 	}
 }
 
@@ -237,67 +268,90 @@ static char* trim(char* s) {
 	return target;
 }
 
-static unsigned string_to_Instruction(char* s) {
-	Instruction I = NULL;
-	char* operation = strtok(s, " ,\t\n");
-	for (int i = 0; i < sizeof(OP_TABLE) / sizeof(Operation); i++) {
-		if (strcmp(OP_TABLE[i].name, operation)) {
-			I.op = OP_TABLE[i];
-			break;
+Operation find_op(char* mnemonic){
+	for(int i = 0; i < sizeof(OP_TABLE) / sizeof(Operation); i++){
+		if(!strcmp(mnemonic, OP_TABLE[i].name)){
+			return OP_TABLE[i];
 		}
 	}
+}
 
-	if (I) {
-		if (I.op.type == 'R') {
-			if (strcmp(I.op.name, "sll") || strcmp(I.op.name, "srl")) {
-				char* rd_ptr = strtok(NULL, " ,\t\n");
-				char* rt_ptr = strtok(NULL, " ,\t\n");
-				char* shamt_ptr = strtok(NULL, " ,\t\n");
-				I.rd = atoi(rd_ptr + 1);
-				I.rt = atoi(rt_ptr + 1);
-				I.shamt = atoi(shamt_ptr);
-				return encode_r(0, I.rt, I.rd, I.shamt, I.op.funct);
-			}
-			else if (strcmp(I.op.name, "jr")) {
-				char* rs_ptr = strtok(NULL, " ,\t\n");
-				I.rs = atoi(rs_ptr + 1);
-				return encode_r(I.rs, 0, 0, 0, I.op.funct);
-			}
-			else {
-				char* rd_ptr = strtok(NULL, " ,\t\n");
-				char* rs_ptr = strtok(NULL, " ,\t\n");
-				char* rt_ptr = strtok(NULL, " ,\t\n");
-				I.rd = atoi(rd_ptr + 1);
-				I.rs = atoi(rs_ptr + 1);
-				I.rt = atoi(rt_ptr + 1);
-				return encode_r(I.rs, I.rt, I.rd, 0, I.op.funct);
-			}
+
+static unsigned string_to_Instruction(char* line, unsigned int current_address) {
+	Instruction I;
+	char* delimiters = " ,\t\n";
+    
+	char* mnemonic = strtok(line, delimiters);
+	const Operation op_info = find_op(mnemonic);
+
+	I.op = &op_info;
+
+	if (I.op->type == 'R') {
+
+		if (strcmp(I.op->name, "sll") == 0 || strcmp(I.op->name, "srl") == 0) {
+			char* rd_ptr = strtok(NULL, delimiters);
+			char* rt_ptr = strtok(NULL, delimiters);
+			char* shamt_ptr = strtok(NULL, delimiters);
+
+			I.rd = atoi(rd_ptr + 1);
+			I.rt = atoi(rt_ptr + 1);
+			I.shamt = atoi(shamt_ptr);
+			return encode_r(0, I.rt, I.rd, I.shamt, I.op->funct);
+		} else if (strcmp(I.op->name, "jr") == 0) {
+			char* rs_ptr = strtok(NULL, delimiters);
+			I.rs = atoi(rs_ptr + 1);
+			return encode_r(I.rs, 0, 0, 0, I.op->funct);
+		} else {
+			char* rd_ptr = strtok(NULL, delimiters);
+			char* rs_ptr = strtok(NULL, delimiters);
+			char* rt_ptr = strtok(NULL, delimiters);
+
+			I.rd = atoi(rd_ptr + 1);
+			I.rs = atoi(rs_ptr + 1);
+			I.rt = atoi(rt_ptr + 1);
+			return encode_r(I.rs, I.rt, I.rd, 0, I.op->funct);
 		}
-		else if (I.op.type == 'I') {
-			if (strcmp(I.op.name, "lw") || strcmp(I.op.name, "sw")) {
+	}
+	else if (I.op->type == 'I') {
 
-			}
-			else if (strcmp(I.op.name, "beq") || strcmp(I.op.name, "bne")) {
+		if (strcmp(I.op->name, "lw") == 0 || strcmp(I.op->name, "sw") == 0) {
+			char* rt_ptr = strtok(NULL, delimiters);
+			char* imm_rs_ptr = strtok(NULL, delimiters);
 
-			}
-			else if (strcmp(I.op.name, "la")) {
 
-			}
-			else {
-				char* rt_ptr = strtok(NULL, " ,\t\n");
-				char* rs_ptr = strtok(NULL, " ,\t\n");
-				char* im_ptr = strtok(NULL, " ,\t\n");
-				I.rt = atoi(rt_ptr + 1);
-				I.rs = atoi(rs_ptr + 1);
-				I.immediate = atoi(im_ptr);
-				return encode_i(I.op.opcode, I.rs, I.rt, I.immediate);
-			}
+			char* imm_str = strtok(imm_rs_ptr, "()");
+			char* rs_str = strtok(NULL, "()");
 
+			I.rt = atoi(rt_ptr + 1);
+			I.immediate = atoi(imm_str);
+			I.rs = atoi(rs_str + 1);
+			return encode_i(I.op->opcode, I.rs, I.rt, I.immediate);
+		} 
+		else if (strcmp(I.op->name, "beq") == 0 || strcmp(I.op->name, "bne") == 0) {
+			char* rs_ptr = strtok(NULL, delimiters);
+			char* rt_ptr = strtok(NULL, delimiters);
+			char* label_ptr = strtok(NULL, delimiters);
+			
+			unsigned int target_addr = find_symbol_address(label_ptr);
+			int offset = (target_addr - (current_address + 4)) / 4;
+
+			I.rs = atoi(rs_ptr + 1);
+			I.rt = atoi(rt_ptr + 1);
+			return encode_i(I.op->opcode, I.rs, I.rt, offset);
 		}
 		else {
-
+			char* rt_ptr = strtok(NULL, delimiters);
+            char* rs_ptr = strtok(NULL, delimiters);
+			char* imm_ptr = strtok(NULL, delimiters);
+			I.rt = atoi(rt_ptr + 1);
+            I.rs = atoi(rs_ptr + 1);
+			I.immediate = strtol(imm_ptr, NULL, 0);
+			return encode_i(I.op->opcode, I.rs, I.rt, I.immediate);
 		}
+	} 
+	else { 
+		char* label_ptr = strtok(NULL, delimiters);
+		unsigned int target_addr = find_symbol_address(label_ptr);
+		return encode_j(I.op->opcode, target_addr);
 	}
-
-
 }
