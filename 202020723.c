@@ -28,7 +28,7 @@ typedef struct {
 }Symbol;
 
 Symbol symbol_table[MAX_SYMBOL];
-int symbol_num = 0;
+int symbol_count = 0;
 
 unsigned data_address_ptr = DATA_BASE;
 unsigned text_address_ptr = TEXT_BASE;
@@ -61,10 +61,9 @@ const Operation OP_TABLE[] = {
 static unsigned encode_r(unsigned rs, unsigned rt, unsigned rd, unsigned shamt, unsigned funct);
 static unsigned encode_i(unsigned op, unsigned rs, unsigned rt, unsigned imm);
 static unsigned encode_j(unsigned op, unsigned target_addr);
-static unsigned string_to_Instruction(char* s, )
+static unsigned string_to_Instruction(char* s);
+void num_to_binary(unsigned num, char* buffer);
 static char* trim(char* s);
-
-
 
 int main(int argc, char* argv[]) {
 
@@ -89,32 +88,86 @@ int main(int argc, char* argv[]) {
 		while (true) {
 			char line[MAX_LINE];
 
-			if (fgets(line, MAX_LINE, stdin) != NULL) {
-				line = trim(line);
-				char* comment_ptr = strchr(line, '#');
-				if (comment_ptr != NULL) {
-					*comment_ptr = '\0';
-				} //주석 제거
+			fgets(line, MAX_LINE, stdin);
+			line = trim(line);
+			if (!(*line)) continue;
 
-
-				if (strcmp(line, ".data")) {
-					isData = true;
-					continue;
-				}
-				else if (strcmp(line, ".text")) {
-					isData = false;
-					continue;
-				}
-
-				if (isData) {
-
-				}
-
+			if (strcmp(line, ".data")) {
+				isData = true;
+				continue;
 			}
+			else if (strcmp(line, ".text")) {
+				isData = false;
+				continue;
+			}
+			char* token1 = strtok(line, " ,");
+			char* token2 = strtok(line, " ,");
+
+			if (end_token(token1)) {
+				add_symbol(token1, isData);
+				char* main_token = token2;
+			}
+			else {
+				char* main_token = token2;
+			}
+
+			if (main_token == NULL) {
+				continue;
+			}
+
+			if (!strcmp(main_token, ".word") == 0) {
+				data_address_ptr += 4;
+			}
+			else if (!strcmp(main_token, "la")) {
+				text_address_ptr += 4;
+			}
+			else {
+				text_address_ptr += 4;
+			}
+
+		}
+	}
+
+	rewind(stdin);
+	text_address_ptr = TEXT_BASE;
+	char* answer[1024];
+	while (true) {
+		char* line[MAX_LINE];
+		fgets(line, MAX_LINE, stdin);
+		line = trim(line);
+		if (!(*line)) continue;
+
+		if (strcmp(line, ".data")) {
+			isData = true;
+			continue;
+		}
+		else if (strcmp(line, ".text")) {
+			isData = false;
+			continue;
+		}
+
+		char* token1 = strtok(line, " ,");
+		char* token2 = strtok(NULL, " ,");
+		char* buffer[33];
+		if (isData) {
+			if (strcmp(token1, ".word") == 0) {
+				num_to_binary(token2, buffer);
+				strcat(answer, buffer);
+			}
+			else {
+				char* token3 = strtok(NULL, " ,");
+				num_to_binary(token3, buffer);
+				strcat(answer, buffer);
+			}
+		}
+		else {
+			if ()
 		}
 
 
 	}
+
+
 
 	return 0;
 }
@@ -129,6 +182,46 @@ static unsigned encode_j(unsigned op, unsigned target_addr) {
 
 static unsigned encode_i(unsigned op, unsigned rs, unsigned rt, unsigned imm) {
 	return (op << 26) | (rs << 21) | (rt << 16) | (imm & 0xFFFFu);
+}
+
+void num_to_binary(unsigned num, char* buffer) {
+	for (int i = 31; i >= 0; i--) {
+		unsigned int mask = 1u << i;
+		if (num & mask) {
+			*buffer = '1';
+		}
+		else {
+			*buffer = '0';
+		}
+		buffer++;
+	}
+	*buffer = NULL;
+}
+
+bool end_token(char* s) {
+	while (*s) {
+		s++;
+	}
+	s--;
+	if (*s == ':') {
+		return true;
+	}
+	return false;
+}
+
+void add_symbol(char* s, bool data) {
+	char* end = s;
+	while (*end) {
+		end++;
+	}
+	end--;
+	*end = NULL;
+	if (data) {
+		symbol_table[symbol_count++] = { s, data_address_ptr };
+	}
+	else {
+		symbol_table[symbol_count++] = { s, text_address_ptr };
+	}
 }
 
 static char* trim(char* s) {
