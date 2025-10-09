@@ -240,6 +240,7 @@ unsigned int search_symbol_address(const char* symbolname) {
             return symbol_table[i].address;
         }
     }
+    return NULL;
 }
 
 static char* trim(char* s) {
